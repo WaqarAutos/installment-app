@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>SQLite Viewer</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f2f2f2;
+      color: #333;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      background: #ffffff;
+      padding: 16px;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+      z-index: 10;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid #ccc;
+      font-size: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      transition: border-color 0.3s;
+    }
+
+    input[type="text"]:focus {
+      border-color: #0066cc;
+      outline: none;
+    }
+
+    #tableContainer {
+      padding: 10px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+
+    th, td {
+      padding: 12px 10px;
+      border-bottom: 1px solid #eee;
+      font-size: 15px;
+      text-align: left;
+    }
+
+    th {
+      background: #fafafa;
+      font-weight: 600;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:hover {
+      background-color: #f9f9f9;
+    }
+
+    button {
+      padding: 6px 12px;
+      background-color: #007bff;
+      border: none;
+      border-radius: 6px;
+      color: white;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+    }
+
+    .modal-content {
+      background: #fff;
+      border-radius: 18px;
+      padding: 20px;
+      width: 92%;
+      max-width: 600px;
+      max-height: 85vh;
+      overflow-y: auto;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+      position: relative;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .close-btn {
+      position: absolute;
+      top: 10px;
+      right: 15px;
+      font-size: 28px;
+      cursor: pointer;
+      color: #888;
+    }
+
+    .modal-title {
+      text-align: center;
+      font-size: 22px;
+      margin-bottom: 15px;
+      font-weight: 600;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    @media (max-width: 600px) {
+      th, td {
+        font-size: 14px;
+        padding: 10px 8px;
+      }
+
+      .modal-title {
+        font-size: 20px;
+      }
+
+      button {
+        font-size: 13px;
+        padding: 6px 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <input type="text" placeholder="🔍 Search by Phone or Engine No..." oninput="loadData(this.value)" />
+  </header>
+
+  <div id="tableContainer">Loading...</div>
+
+  <!-- Detail Modal -->
+  <div id="detailModal" class="modal-overlay">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeModal()">×</span>
+      <h2 class="modal-title">🧾 Ledger Details</h2>
+      <div id="modalTableContainer"></div>
+    </div>
+  </div>
+
+  <!-- SQLite Logic -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.6.2/sql-wasm.js"></script>
+  <script>
+    let db = null;
+
+    document.addEventListener("DOMContentLoaded", async () => {
+      try {
+        const SQL = await initSqlJs({
+          locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.6.2/${file}`
+        });
+
+        const buffer = await fetch("IMS.db?v=" + new Date().getTime()).then(res => res.arrayBuffer());
+        db = new SQL.Database(new Uint8Array(buffer));
+        await loadData();
+      } catch (err) {
+        alert("❌ SQLite not supported in this browser or Private Mode. Please disable Private Mode on iPhone.");
+        console.error(err);
+      }
+    });
+
+    async function loadData(query = "") {
+      if (!db) return;
+
+      let sql = `SELECT * FROM short_rpt `;
+      if (query) {
+        sql += `WHERE Contact LIKE '%${query}%' OR EngineNo LIKE '%${query}%' `;
+      }
+      sql += `LIMIT 100`;
+
+      try {
+        const res = db.exec(sql);
+        const container = document.getElementById("tableContainer");
+        if (!res.length) {
+          container.innerHTML = "No data found.";
+          return;
+        }
+
+        const { columns, values } = res[0];
+        let html = "<table><thead><tr>";
+        columns.forEach((col, i) => {
+          if (i !== 0) html += `<th>${col}</th>`;
+        });
+        html += "<th>Details</th></tr></thead><tbody>";
+
+        values.forEach(row => {
+          html += "<tr>";
+          row.forEach((cell, i) => {
+            if (i !== 0) html += `<td>${cell}</td>`;
+          });
+          html += `<td><button onclick="showDetail('${row[0]}')">View</button></td>`;
+          html += "</tr>";
+        });
+
+        html += "</tbody></table>";
+        container.innerHTML = html;
+      } catch (e) {
+        alert("❌ Query Error: " + e.message);
+      }
+    }
+
+    function showDetail(id) {
+      if (!db) return;
+
+      try {
+        const res = db.exec(`SELECT * FROM tblledger WHERE id = '${id}'`);
+        if (!res.length) {
+          alert("❌ No ledger entry found.");
+          return;
+        }
+
+        const { columns, values } = res[0];
+        const hiddenIndex = columns.indexOf("id");
+
+        let html = "<table><thead><tr>";
+        columns.forEach((col, i) => {
+          if (i !== hiddenIndex) html += `<th>${col}</th>`;
+        });
+        html += "</tr></thead><tbody>";
+
+        values.forEach(row => {
+          html += "<tr>";
+          row.forEach((cell, i) => {
+            if (i !== hiddenIndex) html += `<td>${cell}</td>`;
+          });
+          html += "</tr>";
+        });
+
+        html += "</tbody></table>";
+
+        document.getElementById("modalTableContainer").innerHTML = html;
+        document.getElementById("detailModal").style.display = "flex";
+      } catch (e) {
+        alert("❌ Error loading detail: " + e.message);
+      }
+    }
+
+    function closeModal() {
+      document.getElementById("detailModal").style.display = "none";
+    }
+  </script>
+</body>
+</html>
